@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  namespace: practica
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kafka-init
+          image: apache/kafka:4.2.0
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -e
+              echo "Waiting for Kafka broker..."
+              until /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server kafka:9092 --list > /dev/null 2>&1; do
+                echo "  Kafka not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "Kafka ready. Creating topics..."
+
+              /opt/kafka/bin/kafka-topics.sh \
+                --create --if-not-exists \
+                --bootstrap-server kafka:9092 \
+                --replication-factor 1 --partitions 1 \
+                --topic flight-delay-ml-request
+
+              /opt/kafka/bin/kafka-topics.sh \
+                --create --if-not-exists \
+                --bootstrap-server kafka:9092 \
+                --replication-factor 1 --partitions 1 \
+                --topic flight-delay-ml-response
+
+              echo "Topics created successfully."
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"

@@ -112,10 +112,17 @@ services:
     ports:
       - "8080:8080"   # Spark Web UI
       - "7077:7077"   # Spark master (client connections)
+<<<<<<< HEAD
       - "6066:6066"   # Spark master REST API (cluster mode submissions) 
     volumes:
       - /home/mauro.perezc/spark-4.1.1:/opt/spark
       - /home/mauro.perezc/.ivy2:/root/.ivy2
+=======
+      - "6066:6066"   # Spark master REST API (cluster mode submissions)
+    volumes:
+      - ./spark-4.1.1:/opt/spark
+      - ./ivy2-cache:/root/.ivy2
+>>>>>>> f053088 (Update files)
     environment:
       SPARK_HOME: /opt/spark
     entrypoint: ["/bin/bash", "-c"]
@@ -146,10 +153,16 @@ services:
       spark-master:
         condition: service_healthy
     volumes:
+<<<<<<< HEAD
       - /home/mauro.perezc/spark-4.1.1:/opt/spark
       - /home/mauro.perezc/.ivy2:/root/.ivy2
       - /tmp/spark-worker-1:/tmp/spark-worker
       - /home/mauro.perezc/spark-4.1.1/extra-jars:/opt/spark/extra-jars 
+=======
+      - ./spark-4.1.1:/opt/spark
+      - ./ivy2-cache:/root/.ivy2
+      - /tmp/spark-worker-1:/tmp/spark-worker
+>>>>>>> f053088 (Update files)
     environment:
       SPARK_HOME: /opt/spark
     entrypoint: ["/bin/bash", "-c"]
@@ -173,10 +186,16 @@ services:
       spark-master:
         condition: service_healthy
     volumes:
+<<<<<<< HEAD
       - /home/mauro.perezc/spark-4.1.1:/opt/spark
       - /home/mauro.perezc/.ivy2:/root/.ivy2
       - /tmp/spark-worker-2:/tmp/spark-worker
       - /home/mauro.perezc/spark-4.1.1/extra-jars:/opt/spark/extra-jars
+=======
+      - ./spark-4.1.1:/opt/spark
+      - ./ivy2-cache:/root/.ivy2
+      - /tmp/spark-worker-2:/tmp/spark-worker
+>>>>>>> f053088 (Update files)
     environment:
       SPARK_HOME: /opt/spark
     entrypoint: ["/bin/bash", "-c"]
@@ -186,6 +205,10 @@ services:
           org.apache.spark.deploy.worker.Worker \
           --webui-port 8082 \
           spark://spark-master:7077
+<<<<<<< HEAD
+=======
+
+>>>>>>> f053088 (Update files)
   # ---------------------------------------------------------------
   # HTTP server — serves the predictor JAR to Spark workers
   # ---------------------------------------------------------------
@@ -202,6 +225,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+<<<<<<< HEAD
+=======
+
+>>>>>>> f053088 (Update files)
   # ---------------------------------------------------------------
   # Spark Streaming predictor (runs on the Spark cluster)
   # ---------------------------------------------------------------
@@ -212,7 +239,11 @@ services:
     container_name: spark-predictor
     depends_on:
       jar-server:
+<<<<<<< HEAD
         condition: service_healthy       # ← AÑADIR
+=======
+        condition: service_healthy
+>>>>>>> f053088 (Update files)
       kafka-init:
         condition: service_completed_successfully
       cassandra-init:
@@ -224,12 +255,21 @@ services:
       spark-worker-2:
         condition: service_started
     volumes:
+<<<<<<< HEAD
       - /home/mauro.perezc/spark-4.1.1:/opt/spark
       - /home/mauro.perezc/.ivy2:/root/.ivy2
+=======
+      - ./spark-4.1.1:/opt/spark
+      - ./ivy2-cache:/root/.ivy2
+>>>>>>> f053088 (Update files)
     environment:
       KAFKA_HOST: kafka
       CASSANDRA_HOST: cassandra
       MINIO_HOST: minio
+<<<<<<< HEAD
+=======
+      SPARK_MASTER_HOST: spark-master
+>>>>>>> f053088 (Update files)
 
   # ---------------------------------------------------------------
   # Flask web application
@@ -323,8 +363,13 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./airflow:/opt/airflow
+<<<<<<< HEAD
       - /home/mauro.perezc/spark-4.1.1:/opt/spark
       - /home/mauro.perezc/practica_creativa:/opt/project
+=======
+      - ./spark-4.1.1:/opt/spark
+      - .:/opt/project
+>>>>>>> f053088 (Update files)
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
@@ -356,9 +401,15 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./airflow:/opt/airflow
+<<<<<<< HEAD
       - /home/mauro.perezc/spark-4.1.1:/opt/spark
       - /home/mauro.perezc/.ivy2:/root/.ivy2
       - /home/mauro.perezc/practica_creativa:/opt/project
+=======
+      - ./spark-4.1.1:/opt/spark
+      - ./ivy2-cache:/root/.ivy2
+      - .:/opt/project
+>>>>>>> f053088 (Update files)
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db

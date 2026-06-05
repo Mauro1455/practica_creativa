@@ -1,0 +1,142 @@
+---
+# Spark Master — ClusterIP Service
+# Named "spark-master-svc" (not "spark-master") to prevent Kubernetes from
+# injecting SPARK_MASTER_PORT=tcp://IP:7077 which Spark misinterprets as a port.
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master-svc
+  namespace: practica
+spec:
+  selector:
+    app: spark-master
+  ports:
+    - name: spark
+      port: 7077
+      targetPort: 7077
+    - name: rest
+      port: 6066
+      targetPort: 6066
+    - name: webui
+      port: 8080
+      targetPort: 8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master
+  namespace: practica
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-master
+  template:
+    metadata:
+      labels:
+        app: spark-master
+    spec:
+      containers:
+        - name: spark-master
+          image: europe-west1-docker.pkg.dev/practicacreativa-497711/practica/spark-base:4.1.1
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              exec /opt/spark/bin/spark-class \
+                org.apache.spark.deploy.master.Master \
+                --host $SPARK_LOCAL_IP \
+                --port 7077 \
+                --webui-port 8080
+          env:
+            - name: SPARK_LOCAL_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SPARK_HOME
+              value: /opt/spark
+          ports:
+            - containerPort: 7077
+            - containerPort: 6066
+            - containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 7077
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 15
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+
+---
+# Spark Workers — 2 replicas, each pod advertises its own pod IP
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker
+  namespace: practica
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spark-worker
+  template:
+    metadata:
+      labels:
+        app: spark-worker
+    spec:
+      containers:
+        - name: spark-worker
+          image: europe-west1-docker.pkg.dev/practicacreativa-497711/practica/spark-base:4.1.1
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              # Pod hostnames (e.g. spark-worker-xxx-yyy) are NOT registered in
+              # Kubernetes DNS, so executors on other pods cannot resolve them.
+              # Setting spark.driver.host to the pod IP ensures the driver
+              # advertises a routable address when it runs on this worker.
+              echo "spark.driver.host $(hostname -i)" >> /opt/spark/conf/spark-defaults.conf
+              exec /opt/spark/bin/spark-class \
+                org.apache.spark.deploy.worker.Worker \
+                --webui-port 8081 \
+                spark://spark-master-svc:7077
+          env:
+            - name: SPARK_LOCAL_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            # SPARK_LOCAL_HOSTNAME is used by Utils.localHostName() which sets
+            # spark.driver.host when a driver starts on this worker.
+            # Pod hostnames are not in Kubernetes DNS; the pod IP is always routable.
+            - name: SPARK_LOCAL_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SPARK_HOME
+              value: /opt/spark
+            - name: SPARK_WORKER_DIR
+              value: /var/lib/spark/work
+          ports:
+            - containerPort: 8081
+          volumeMounts:
+            - name: work-dir
+              mountPath: /var/lib/spark/work
+            - name: ivy-cache
+              mountPath: /root/.ivy2
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1536Mi"
+            limits:
+              cpu: "1500m"
+              memory: "3Gi"
+      volumes:
+        - name: work-dir
+          emptyDir: {}
+        - name: ivy-cache
+          emptyDir: {}

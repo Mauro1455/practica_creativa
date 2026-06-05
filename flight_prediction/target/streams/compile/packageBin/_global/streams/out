@@ -1,0 +1,19 @@
+[debug] Packaging /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/flight_prediction_2.13-0.1.jar ...
+[debug] Input file mappings:
+[debug] 	
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes
+[debug] 	es
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es
+[debug] 	es/upm
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es/upm
+[debug] 	es/upm/dit
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es/upm/dit
+[debug] 	es/upm/dit/ging
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es/upm/dit/ging
+[debug] 	es/upm/dit/ging/predictor
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es/upm/dit/ging/predictor
+[debug] 	es/upm/dit/ging/predictor/MakePrediction.class
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es/upm/dit/ging/predictor/MakePrediction.class
+[debug] 	es/upm/dit/ging/predictor/MakePrediction$.class
+[debug] 	  /home/mauper922/practica_creativa/flight_prediction/target/scala-2.13/classes/es/upm/dit/ging/predictor/MakePrediction$.class
+[debug] Done packaging.
