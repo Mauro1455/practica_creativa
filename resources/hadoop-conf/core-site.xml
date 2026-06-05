@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <!-- Local filesystem as default (no HDFS needed) -->
+  <property>
+    <name>fs.defaultFS</name>
+    <value>file:///</value>
+  </property>
+
+  <!-- S3A (MinIO) — used by YARN NodeManager for staging resource localisation -->
+  <property>
+    <name>fs.s3a.endpoint</name>
+    <value>http://minio:9000</value>
+  </property>
+  <property>
+    <name>fs.s3a.access.key</name>
+    <value>minio</value>
+  </property>
+  <property>
+    <name>fs.s3a.secret.key</name>
+    <value>minio123</value>
+  </property>
+  <property>
+    <name>fs.s3a.path.style.access</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>fs.s3a.impl</name>
+    <value>org.apache.hadoop.fs.s3a.S3AFileSystem</value>
+  </property>
+  <property>
+    <name>fs.s3a.aws.credentials.provider</name>
+    <value>org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider</value>
+  </property>
+</configuration>

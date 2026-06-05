@@ -4,7 +4,6 @@
   / <a href="/flights/delays/predict_kafka">Flight Delay Prediction with Kafka</a>
 
   <p class="lead" style="margin: 10px; margin-left: 0px;">
-    <!-- Airline Name and website-->
     Predicting Flight Delays with Kafka
   </p>
 
@@ -16,7 +15,7 @@
       {% else %}
         <label for="{{item['field']}}">{{item['field']}}</label>
       {% endif %}
-        <input name="{{item['field']}}" style="width: 36px; margin-right: 10px;" 
+        <input name="{{item['field']}}" style="width: 36px; margin-right: 10px;"
         {% if 'value' in item %}
           value="{{item['value']}}"
         {% endif %}
@@ -29,6 +28,35 @@
       <p>Delay: <span id="result" style="display: inline-block;"></span></p>
   </div>
 
-  <!-- Load our form processing javascript -->
-  <script src="/static/flight_delay_predict_polling.js"></script>
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script>
+    var socket = io();
+
+    $('#flight_delay_classification').submit(function(event) {
+      event.preventDefault();
+      $('#result').text('Processing...');
+
+      $.post('/flights/delays/predict/classify_realtime', $(this).serialize(), function(data) {
+        var response = JSON.parse(data);
+        if (response.status == 'OK') {
+          socket.emit('join', {uuid: response.id});
+        }
+      });
+    });
+
+    socket.on('prediction', function(data) {
+      var displayMessage;
+      if (data.Prediction == 0 || data.Prediction == '0') {
+        displayMessage = "Early (15+ Minutes Early)";
+      } else if (data.Prediction == 1 || data.Prediction == '1') {
+        displayMessage = "Slightly Early (0-15 Minute Early)";
+      } else if (data.Prediction == 2 || data.Prediction == '2') {
+        displayMessage = "Slightly Late (0-30 Minute Delay)";
+      } else if (data.Prediction == 3 || data.Prediction == '3') {
+        displayMessage = "Very Late (30+ Minutes Late)";
+      }
+      $('#result').text(displayMessage);
+    });
+  </script>
 {% endblock %}
