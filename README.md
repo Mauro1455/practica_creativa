@@ -91,28 +91,31 @@ cd practica_creativa
 bash prepare.sh
 ```
 
-El script `prepare.sh` descarga y coloca en `./spark-4.1.1/`:
+El script `prepare.sh` descarga y coloca en `./spark-4.1.1/jars/`:
 - Spark 4.1.1 binarios
-- `hadoop-aws-3.4.1.jar` y `aws-java-sdk-bundle-1.12.262.jar` (necesarios para conectar MinIO)
+- `hadoop-aws-3.4.1.jar` y `bundle-2.25.16.jar` (AWS SDK v2, necesario para conectar MinIO con hadoop-aws 3.4.1)
 - JAR precompilado de Scala (evita instalar sbt)
 
 ### Paso 4 — Entrenar el modelo ML con Docker Compose
 
-El cluster K8s necesita un modelo RandomForest entrenado. El script de despliegue lo copia desde el MinIO local al MinIO de K8s:
+El cluster K8s necesita un modelo RandomForest entrenado. El script `start_k8s.sh` lo copia automáticamente del MinIO local al MinIO de K8s, así que hay que entrenar antes de desplegar:
 
 ```bash
-# Arrancar los servicios de soporte (Spark, MinIO, Airflow, Kafka, Cassandra)
+# Arrancar los servicios de soporte (Spark, MinIO, Kafka, Cassandra, MLflow)
 docker compose up --build -d
 
-# Esperar a que todos los servicios estén en marcha (~5 min la primera vez)
+# Esperar a que todos los contenedores estén en marcha (~5 min la primera vez)
 docker compose ps
+
+# Entrenar el modelo con Spark MLlib en modo cluster (~10-15 min)
+bash train.sh
 ```
 
-Una vez que todos los contenedores estén `running`:
+El script `train.sh` lanza un `spark-submit --deploy-mode cluster` que entrena un RandomForest con Spark MLlib y guarda el modelo en MinIO (`lakehouse/models/`).
 
-1. Abre **Airflow** en `http://$(curl -s ifconfig.me):8090` (usuario: `admin`, contraseña: `admin`)
-2. Ve a **DAGs** → `train_flight_delay_model` → **▶ Trigger DAG**
-3. Espera ~10 minutos hasta que el DAG esté en verde (✓ success)
+El progreso puede monitorizarse en **MLflow**: `http://$(curl -s ifconfig.me):5000` → sección **Experiments** → aparecerá un run activo con métricas en tiempo real.
+
+> **Importante:** no pares Docker Compose después del entrenamiento. El paso 6 lo necesita levantado para copiar los modelos al MinIO de K8s.
 
 ### Paso 5 — Crear el cluster GKE y el Artifact Registry
 
@@ -127,6 +130,8 @@ gcloud artifacts repositories create practica \
 gcloud container clusters create practica-k8s \
   --num-nodes=2 \
   --machine-type=e2-standard-4 \
+  --disk-type=pd-standard \
+  --disk-size=50 \
   --zone=europe-west1-b \
   --project=$(gcloud config get-value project)
 ```
@@ -135,7 +140,7 @@ El cluster tarda ~5 minutos en estar disponible. `kubectl` ya viene preinstalado
 
 ### Paso 6 — Desplegar en Kubernetes
 
-Con Docker Compose aún en marcha (necesario para copiar los modelos):
+Con Docker Compose aún en marcha (necesario para copiar los modelos al MinIO de K8s):
 
 ```bash
 bash k8s/start_k8s.sh
@@ -146,11 +151,14 @@ El script realiza automáticamente en ~20-30 minutos:
 1. **Autenticación** de Docker con Artifact Registry
 2. **Build y push** de imágenes (`spark-base`, `spark-predictor`, `flask`)
 3. **Configuración de kubectl** para el cluster GKE
-4. **Despliegue** de todos los manifiestos (Kafka, Cassandra, MinIO, Spark, Flask)
-5. **Copia de modelos** del MinIO local al MinIO de K8s
-6. **Verificación** de que el predictor Spark está consumiendo Kafka
+4. **Despliegue** de todos los manifiestos (Kafka, Cassandra, MinIO, Spark Master/Workers, Flask)
+5. **Copia de modelos** del MinIO local (Docker Compose) al MinIO de K8s
+6. **Lanzamiento del predictor** Spark en modo cluster (`--deploy-mode cluster`): el driver corre en un worker pod, no en el pod del job
+7. **Verificación** de que el predictor está consumiendo mensajes de Kafka
 
 Al finalizar, el script imprime la URL de acceso.
+
+> **Arquitectura del predictor en K8s:** el Job `spark-predictor` actúa como cliente de spark-submit; tras enviar el driver al cluster Spark, el pod del Job termina (`Completed`) y el driver sigue corriendo en uno de los pods `spark-worker`.
 
 ### Paso 7 — Obtener la URL de la aplicación
 
@@ -203,15 +211,18 @@ Abre `http://localhost:9001` (usuario: `minio`, contraseña: `minio123`) → buc
 # Estado de todos los pods
 kubectl get pods -n practica
 
-# Logs del predictor Spark
+# Logs del Job spark-predictor (muestra la sumisión del driver)
 kubectl logs -n practica job/spark-predictor
+
+# Logs del driver Spark en tiempo real (corre en un worker pod)
+kubectl exec -n practica -l app=spark-worker -- \
+  bash -c "tail -f /var/lib/spark/work/driver-*/stdout 2>/dev/null"
+
+# Confirmar que el driver está en cluster mode
+kubectl logs -n practica job/spark-predictor | grep "Driver running on"
 
 # Logs del Flask en tiempo real
 kubectl logs -n practica -l app=flask -f
-
-# Ver si el driver está corriendo en los workers
-kubectl exec -n practica -l app=spark-worker -- \
-  tail -f /var/lib/spark/work/driver-*/stdout 2>/dev/null
 ```
 
 ---
@@ -224,7 +235,7 @@ kubectl exec -n practica -l app=spark-worker -- \
 | 2 | Modelo RandomForest entrenado con Spark MLlib                    | ✅     |
 | 3 | Almacenamiento de resultados en Cassandra                        | ✅     |
 | 4 | Interfaz web con WebSockets (Flask + SocketIO)                   | ✅     |
-| 5 | Pipeline de entrenamiento automatizado con Apache Airflow        | ✅     |
+| 5 | Pipeline de entrenamiento con Spark MLlib (`bash train.sh`)      | ✅     |
 | 6 | Almacén de artefactos con MinIO (S3-compatible)                  | ✅     |
 | 7 | Tracking de experimentos con MLflow                              | ✅     |
 | 8 | Despliegue en Kubernetes (GKE) con manifiestos declarativos      | ✅     |
