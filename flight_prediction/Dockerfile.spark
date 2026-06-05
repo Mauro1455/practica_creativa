@@ -1,0 +1,26 @@
+FROM eclipse-temurin:17-jre-jammy
+
+# netcat for port-readiness checks, curl for MinIO health + mc download
+RUN apt-get update && apt-get install -y netcat-openbsd curl && \
+    # Install MinIO client (mc) to upload JAR to MinIO at startup
+    curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc \
+         -o /usr/local/bin/mc && \
+    chmod +x /usr/local/bin/mc && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$SPARK_HOME/bin:$PATH
+
+WORKDIR /app
+
+# JAR built by: sbt package  (inside flight_prediction/)
+COPY target/scala-2.13/flight_prediction_2.13-0.1.jar .
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENV KAFKA_HOST=kafka
+ENV MINIO_HOST=minio
+ENV CASSANDRA_HOST=cassandra
+
+ENTRYPOINT ["/entrypoint.sh"]

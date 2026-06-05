@@ -1,0 +1,7 @@
+Flask
+flask-socketio
+kafka-python-ng
+cassandra-driver
+iso8601
+bson
+pymongo
