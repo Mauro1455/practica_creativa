@@ -1,0 +1,63 @@
+---
+# The spark-predictor JAR is loaded as a ConfigMap by setup.sh:
+#   kubectl create configmap spark-jar \
+#     --from-file=flight_prediction_2.13-0.1.jar=\
+#       flight_prediction/target/scala-2.13/flight_prediction_2.13-0.1.jar \
+#     -n practica
+#
+# The ConfigMap is mounted and served via python http.server so workers can
+# download it during cluster-mode submission.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jar-server
+  namespace: practica
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jar-server
+  template:
+    metadata:
+      labels:
+        app: jar-server
+    spec:
+      containers:
+        - name: jar-server
+          image: python:3.11-slim
+          command: ["python3", "-m", "http.server", "8888", "--directory", "/srv"]
+          ports:
+            - containerPort: 8888
+          volumeMounts:
+            - name: jar
+              mountPath: /srv
+          readinessProbe:
+            httpGet:
+              path: /flight_prediction_2.13-0.1.jar
+              port: 8888
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      volumes:
+        - name: jar
+          configMap:
+            name: spark-jar
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jar-server
+  namespace: practica
+spec:
+  selector:
+    app: jar-server
+  ports:
+    - port: 8888
+      targetPort: 8888

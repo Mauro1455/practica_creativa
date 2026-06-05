@@ -46,6 +46,7 @@
     });
 
     socket.on('prediction', function(data) {
+<<<<<<< HEAD
       var displayMessage;
       if (data.Prediction == 0 || data.Prediction == '0') {
         displayMessage = "Early (15+ Minutes Early)";
@@ -55,6 +56,21 @@
         displayMessage = "Slightly Late (0-30 Minute Delay)";
       } else if (data.Prediction == 3 || data.Prediction == '3') {
         displayMessage = "Very Late (30+ Minutes Late)";
+=======
+      // Accept both 'prediction' (lowercase, Spark ML default) and 'Prediction' (legacy)
+      var pred = (data.prediction !== undefined) ? data.prediction : data.Prediction;
+      var displayMessage;
+      if (pred == 0) {
+        displayMessage = "Early (15+ Minutes Early)";
+      } else if (pred == 1) {
+        displayMessage = "Slightly Early (0-15 Minute Early)";
+      } else if (pred == 2) {
+        displayMessage = "Slightly Late (0-30 Minute Delay)";
+      } else if (pred == 3) {
+        displayMessage = "Very Late (30+ Minutes Late)";
+      } else {
+        displayMessage = "Prediction: " + pred;
+>>>>>>> f053088 (Update files)
       }
       $('#result').text(displayMessage);
     });

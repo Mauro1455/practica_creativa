@@ -1,0 +1,21 @@
+# Uses the spark-base image (built first by setup.sh) so spark-submit is available.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# mc client — clears Kafka checkpoint from MinIO before submission
+RUN curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc \
+         -o /usr/local/bin/mc && \
+    chmod +x /usr/local/bin/mc
+
+WORKDIR /app
+
+# setup.sh copies these files into k8s/spark-predictor-ctx/ before building
+COPY flight_prediction_2.13-0.1.jar .
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENV KAFKA_HOST=kafka
+ENV MINIO_HOST=minio
+ENV CASSANDRA_HOST=cassandra
+
+ENTRYPOINT ["/entrypoint.sh"]
