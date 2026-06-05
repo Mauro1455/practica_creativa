@@ -60,7 +60,7 @@ if [ -f "${JARS_DIR}/${AWS_BUNDLE_JAR}" ]; then
 else
   echo "[3/4] Descargando ${AWS_BUNDLE_JAR} (~450 MB — puede tardar varios minutos)..."
   curl -fsSL \
-    "https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.20.18/${AWS_BUNDLE_JAR}" \
+    "https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.25.16/${AWS_BUNDLE_JAR}" \
     -o "${JARS_DIR}/${AWS_BUNDLE_JAR}"
   echo "  ${AWS_BUNDLE_JAR} descargado."
 fi
