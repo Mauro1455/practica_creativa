@@ -40,6 +40,7 @@ spec:
       containers:
         - name: spark-master
           image: europe-west1-docker.pkg.dev/practicacreativa-497711/practica/spark-base:4.1.1
+          imagePullPolicy: Always
           command: ["/bin/bash", "-c"]
           args:
             - |
@@ -93,6 +94,7 @@ spec:
       containers:
         - name: spark-worker
           image: europe-west1-docker.pkg.dev/practicacreativa-497711/practica/spark-base:4.1.1
+          imagePullPolicy: Always
           command: ["/bin/bash", "-c"]
           args:
             - |
@@ -119,6 +121,8 @@ spec:
                   fieldPath: status.podIP
             - name: SPARK_HOME
               value: /opt/spark
+            - name: SPARK_WORKER_MEMORY
+              value: "2g"
             - name: SPARK_WORKER_DIR
               value: /var/lib/spark/work
           ports:

@@ -19,9 +19,11 @@ echo "========================================================"
 echo ""
 
 # ── 1. Descargar y extraer Spark ──────────────────────────────────────────────
-if [ -d "$SPARK_DIR" ]; then
-  echo "[1/4] Spark ya descargado en ./${SPARK_DIR}/"
+if [ -f "${SPARK_DIR}/bin/spark-class" ]; then
+  echo "[1/4] Spark ya instalado en ./${SPARK_DIR}/"
 else
+  # Limpiar directorio vacío o incompleto si existe
+  [ -d "$SPARK_DIR" ] && rm -rf "$SPARK_DIR"
   echo "[1/4] Descargando Spark ${SPARK_VERSION} (~280 MB)..."
   if command -v wget &>/dev/null; then
     wget -q --show-progress "$SPARK_URL" -O "$SPARK_TGZ" 2>&1 || \
@@ -51,14 +53,14 @@ else
   echo "  ${HADOOP_AWS_JAR} descargado."
 fi
 
-# ── 3. JAR aws-java-sdk-bundle (credenciales S3A) ─────────────────────────────
-AWS_BUNDLE_JAR="aws-java-sdk-bundle-1.12.262.jar"
+# ── 3. JAR aws-sdk-bundle v2 (credenciales S3A — Spark 4.x requiere SDK v2) ────
+AWS_BUNDLE_JAR="bundle-2.25.16.jar"
 if [ -f "${JARS_DIR}/${AWS_BUNDLE_JAR}" ]; then
   echo "[3/4] ${AWS_BUNDLE_JAR} ya presente."
 else
-  echo "[3/4] Descargando ${AWS_BUNDLE_JAR} (~533 MB — puede tardar varios minutos)..."
+  echo "[3/4] Descargando ${AWS_BUNDLE_JAR} (~450 MB — puede tardar varios minutos)..."
   curl -fsSL \
-    "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/${AWS_BUNDLE_JAR}" \
+    "https://repo1.maven.org/maven2/software/amazon/awssdk/bundle/2.20.18/${AWS_BUNDLE_JAR}" \
     -o "${JARS_DIR}/${AWS_BUNDLE_JAR}"
   echo "  ${AWS_BUNDLE_JAR} descargado."
 fi

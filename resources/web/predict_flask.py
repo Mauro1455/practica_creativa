@@ -28,26 +28,6 @@ RESPONSE_TOPIC = 'flight-delay-ml-response'
 from flask_socketio import SocketIO, join_room
 socketio = SocketIO(app)
 
-<<<<<<< HEAD
-# Background Kafka consumer thread
-import threading
-
-def kafka_response_consumer():
-    consumer = KafkaConsumer(
-        RESPONSE_TOPIC,
-        bootstrap_servers=[f'{KAFKA_HOST}:9092'],
-        api_version=(4,2,0),
-        value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-    )
-    for message in consumer:
-        prediction = message.value
-        uuid = prediction.get('UUID')
-        if uuid:
-            socketio.emit('prediction', prediction, room=uuid)
-
-consumer_thread = threading.Thread(target=kafka_response_consumer)
-consumer_thread.daemon = True
-=======
 # Background Kafka consumer thread — restarts automatically on any error
 import threading
 import time
@@ -70,14 +50,12 @@ def kafka_response_consumer():
                 uuid = prediction.get('UUID')
                 print(f"[kafka_consumer] Got prediction UUID={uuid} Prediction={prediction.get('Prediction')}", flush=True)
                 if uuid:
-                    # namespace='/' is explicit for Flask-SocketIO background-thread safety
                     socketio.emit('prediction', prediction, room=uuid, namespace='/')
         except Exception as exc:
             print(f"[kafka_consumer] ERROR: {exc} — restarting in 3s", flush=True)
             time.sleep(3)
 
 consumer_thread = threading.Thread(target=kafka_response_consumer, daemon=True)
->>>>>>> f053088 (Update files)
 consumer_thread.start()
 
 @socketio.on('join')
@@ -155,13 +133,11 @@ def flight_delays_page_kafka():
 
   return render_template('flight_delays_predict_kafka.html', form_config=form_config)
 
-<<<<<<< HEAD
-=======
 @app.route('/health')
 def health():
   return 'OK', 200
 
->>>>>>> f053088 (Update files)
+
 @app.route('/shutdown')
 def shutdown():
   return 'Server shutting down...'
