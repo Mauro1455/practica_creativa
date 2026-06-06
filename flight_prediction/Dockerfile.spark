@@ -1,12 +1,13 @@
-FROM europe-west1-docker.pkg.dev/practicacreativa-497711/practica/spark-base:4.1.1
+FROM eclipse-temurin:17-jre-jammy
 
-# netcat for port-readiness checks, curl for mc download
 RUN apt-get update && apt-get install -y netcat-openbsd curl && \
-    # Install MinIO client (mc)
     curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc \
          -o /usr/local/bin/mc && \
     chmod +x /usr/local/bin/mc && \
     rm -rf /var/lib/apt/lists/*
+
+ENV SPARK_HOME=/opt/spark
+ENV PATH=${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}
 
 WORKDIR /app
 

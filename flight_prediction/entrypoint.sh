@@ -27,6 +27,7 @@ exec /opt/spark/bin/spark-submit \
   --class es.upm.dit.ging.predictor.MakePrediction \
   --driver-memory 512m \
   --executor-memory 512m \
+  --jars "local:///opt/spark/extra-jars/hadoop-aws-3.4.1.jar,local:///opt/spark/extra-jars/bundle-2.25.16.jar" \
   --conf "spark.rpc.askTimeout=120s" \
   --conf "spark.network.timeout=120s" \
   --conf "spark.driver.extraJavaOptions=-DKAFKA_HOST=${KAFKA_HOST} -DMINIO_HOST=${MINIO_HOST} -DCASSANDRA_HOST=${CASSANDRA_HOST} --add-opens=java.base/sun.util.calendar=ALL-UNNAMED" \

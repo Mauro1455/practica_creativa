@@ -59,7 +59,8 @@ gcloud compute instances create practica-vm \
   --image-project=ubuntu-os-cloud \
   --boot-disk-size=60GB \
   --zone=europe-west1-b \
-  --tags=practica-ports
+  --tags=practica-ports \
+  --scopes=cloud-platform
 
 # Abrir puertos de administración
 gcloud compute firewall-rules create practica-allow-ports \
@@ -68,7 +69,7 @@ gcloud compute firewall-rules create practica-allow-ports \
   --description="Puertos de practica-creativa"
 ```
 
-### Paso 2 — Conectarse a la VM e instalar Docker
+### Paso 2 — Conectarse a la VM e instalar Docker y kubectl
 
 ```bash
 # Conectarse
@@ -79,6 +80,17 @@ curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 newgrp docker
 docker --version   # debe imprimir la versión instalada
+
+# Instalar kubectl y gke-gcloud-auth-plugin
+# (la imagen Ubuntu 22.04 de GCE tiene gcloud vía apt sin estos paquetes)
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+  | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+  | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+sudo apt-get update -qq && \
+sudo apt-get install -y kubectl google-cloud-sdk-gke-gcloud-auth-plugin
+echo 'export USE_GKE_GCLOUD_AUTH_PLUGIN=True' >> ~/.bashrc && source ~/.bashrc
+kubectl version --client   # debe imprimir la versión instalada
 ```
 
 ### Paso 3 — Clonar el repositorio y preparar el entorno
@@ -87,35 +99,31 @@ docker --version   # debe imprimir la versión instalada
 git clone https://github.com/Mauro1455/practica_creativa.git
 cd practica_creativa
 
-# Descarga Spark 4.1.1, JARs S3A y copia el JAR precompilado (~830 MB, ~5-10 min)
+# Descarga Spark 4.1.1, JARs S3A, datos de distancias y el JAR precompilado (~550 MB, ~5-10 min)
 bash prepare.sh
 ```
 
-El script `prepare.sh` descarga y coloca en `./spark-4.1.1/jars/`:
-- Spark 4.1.1 binarios
-- `hadoop-aws-3.4.1.jar` y `bundle-2.25.16.jar` (AWS SDK v2, necesario para conectar MinIO con hadoop-aws 3.4.1)
-- JAR precompilado de Scala (evita instalar sbt)
+El script `prepare.sh` realiza 6 pasos:
+1. Spark 4.1.1 binarios
+2. `extra-jars/hadoop-aws-3.4.1.jar` (acceso S3A → MinIO; en `extra-jars/` porque Spark 4.1.1 incluye `hadoop-client-runtime-3.4.2` con formato "60s" que rompe 3.3.x)
+3. `extra-jars/bundle-2.25.16.jar` (AWS SDK v2 — requerido por hadoop-aws 3.4.x; en `extra-jars/` para que el Spark Master **no** lo cargue automáticamente y evitar el conflicto Netty con `NoSuchMethodError` en `PooledByteBufAllocator`)
+4. `data/origin_dest_distances.jsonl` (distancias entre aeropuertos, necesario para Cassandra)
+5. JAR precompilado de Scala (evita instalar sbt)
+6. `jars/java-driver-core-shaded-4.18.1.jar` (DataStax OSS Driver v4 para Cassandra; marcado como `provided` en build.sbt → debe estar en el classpath del worker en runtime; shaded = sin conflictos Netty)
 
-### Paso 4 — Entrenar el modelo ML con Docker Compose
+### Paso 4 — Arrancar los servicios de soporte con Docker Compose
 
-El cluster K8s necesita un modelo RandomForest entrenado. El script `start_k8s.sh` lo copia automáticamente del MinIO local al MinIO de K8s, así que hay que entrenar antes de desplegar:
+Docker Compose levanta MinIO, MLflow, Kafka y Cassandra. El entrenamiento ocurre en el Paso 6 sobre el cluster GKE (cluster mode real).
 
 ```bash
-# Arrancar los servicios de soporte (Spark, MinIO, Kafka, Cassandra, MLflow)
+# Arrancar los servicios de soporte
 docker compose up --build -d
 
-# Esperar a que todos los contenedores estén en marcha (~5 min la primera vez)
+# Verificar que todos los contenedores estén en marcha (~5 min la primera vez)
 docker compose ps
-
-# Entrenar el modelo con Spark MLlib en modo cluster (~10-15 min)
-bash train.sh
 ```
 
-El script `train.sh` lanza un `spark-submit --deploy-mode cluster` que entrena un RandomForest con Spark MLlib y guarda el modelo en MinIO (`lakehouse/models/`).
-
-El progreso puede monitorizarse en **MLflow**: `http://$(curl -s ifconfig.me):5000` → sección **Experiments** → aparecerá un run activo con métricas en tiempo real.
-
-> **Importante:** no pares Docker Compose después del entrenamiento. El paso 6 lo necesita levantado para copiar los modelos al MinIO de K8s.
+> **Importante:** mantén Docker Compose en marcha durante el Paso 6. Los pods de entrenamiento en GKE acceden al MinIO y MLflow de esta VM por su IP pública.
 
 ### Paso 5 — Crear el cluster GKE y el Artifact Registry
 
@@ -133,32 +141,45 @@ gcloud container clusters create practica-k8s \
   --disk-type=pd-standard \
   --disk-size=50 \
   --zone=europe-west1-b \
+  --scopes=cloud-platform \
   --project=$(gcloud config get-value project)
+
+# Dar permiso de lectura al service account del nodo para Artifact Registry
+# (necesario para que los pods puedan hacer pull de las imágenes)
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
 ```
 
-El cluster tarda ~5 minutos en estar disponible. `kubectl` ya viene preinstalado en Cloud Shell y en las VMs de GCloud; no es necesario instalarlo.
+El cluster tarda ~5 minutos en estar disponible.
 
-### Paso 6 — Desplegar en Kubernetes
+### Paso 6 — Construir imágenes, entrenar en K8s y desplegar
 
-Con Docker Compose aún en marcha (necesario para copiar los modelos al MinIO de K8s):
+Con Docker Compose en marcha, ejecutar estos tres comandos en orden:
 
 ```bash
-bash k8s/start_k8s.sh
+# 6a — Build + push imágenes + desplegar servicios K8s (~20 min)
+#      Construye spark-base (incluye Python para el training), spark-predictor y flask.
+#      Despliega Kafka, Cassandra, MinIO, Spark, Flask en GKE.
+bash k8s/start_k8s.sh --skip-models
+
+# 6b — Entrenar el modelo RandomForest en K8s en cluster mode (~10-15 min)
+#      El driver y los executors corren como pods de GKE.
+#      El modelo se guarda en el MinIO de Docker Compose (esta VM).
+#      Progreso: http://$(curl -s ifconfig.me):5000 → Experiments
+bash train.sh
+
+# 6c — Copiar modelos al MinIO de K8s y arrancar el predictor (~5 min)
+bash k8s/start_k8s.sh --skip-build --skip-deploy
 ```
 
-El script realiza automáticamente en ~20-30 minutos:
+**Por qué tres comandos:**
+- `--skip-models` en el primero: no hay modelos todavía, se entrena después
+- `train.sh` usa `--master k8s://... --deploy-mode cluster` — funciona con Python porque K8s sí soporta Python en cluster mode (a diferencia de Spark Standalone)
+- `--skip-build --skip-deploy` en el último: solo copia modelos y relanza el predictor
 
-1. **Autenticación** de Docker con Artifact Registry
-2. **Build y push** de imágenes (`spark-base`, `spark-predictor`, `flask`)
-3. **Configuración de kubectl** para el cluster GKE
-4. **Despliegue** de todos los manifiestos (Kafka, Cassandra, MinIO, Spark Master/Workers, Flask)
-5. **Copia de modelos** del MinIO local (Docker Compose) al MinIO de K8s
-6. **Lanzamiento del predictor** Spark en modo cluster (`--deploy-mode cluster`): el driver corre en un worker pod, no en el pod del job
-7. **Verificación** de que el predictor está consumiendo mensajes de Kafka
-
-Al finalizar, el script imprime la URL de acceso.
-
-> **Arquitectura del predictor en K8s:** el Job `spark-predictor` actúa como cliente de spark-submit; tras enviar el driver al cluster Spark, el pod del Job termina (`Completed`) y el driver sigue corriendo en uno de los pods `spark-worker`.
+> **Arquitectura del predictor en K8s:** el Job `spark-predictor` actúa como cliente de spark-submit; tras enviar el driver al cluster Spark Standalone de K8s, el pod del Job termina (`Completed`) y el driver sigue corriendo en uno de los pods `spark-worker`.
 
 ### Paso 7 — Obtener la URL de la aplicación
 

@@ -34,3 +34,9 @@ data/origin_dest_distances.jsonl
 data/simple_flight_delay_features.jsonl.bz2
 spark-4.1.1/
 ivy2-cache/
+
+# Runtime data — not part of the source
+airflow/airflow.db
+airflow/airflow-webserver.pid
+airflow/logs/
+data_minio/

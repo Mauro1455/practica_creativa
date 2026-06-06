@@ -23,9 +23,9 @@ with DAG(
 
         /opt/spark/bin/spark-submit \
           --master spark://spark-master:7077 \
-          --deploy-mode cluster \
+          --deploy-mode client \
           --conf spark.pyspark.python=python3 \
-          --packages org.apache.iceberg:iceberg-spark-runtime-4.0_2.13:1.10.0,org.apache.hadoop:hadoop-aws:3.4.1,software.amazon.awssdk:bundle:2.25.16 \
+          --packages org.apache.iceberg:iceberg-spark-runtime-4.0_2.13:1.10.0 \
           --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
           --conf spark.hadoop.fs.s3a.access.key=minio \
           --conf spark.hadoop.fs.s3a.secret.key=minio123 \

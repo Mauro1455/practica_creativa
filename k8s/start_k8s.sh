@@ -138,35 +138,38 @@ else
   echo "[4/7] SKIPPED: K8s deploy (--skip-deploy)"
 fi
 
-# ── Step 5: Wait for MinIO external IP and upload models ──────────────────────
+# ── Step 4b: Create/refresh Artifact Registry image pull secret ───────────────
+# GKE nodes need this to pull images from AR when node scopes don't include
+# cloud-platform. Token is valid ~1h; script refreshes it on every run.
+echo ""
+echo "[4b/7] Refreshing Artifact Registry image pull secret..."
+kubectl create secret docker-registry ar-pull-secret \
+  --docker-server="${REGION}-docker.pkg.dev" \
+  --docker-username=oauth2accesstoken \
+  --docker-password="$(gcloud auth print-access-token)" \
+  -n "$NAMESPACE" \
+  --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
+kubectl patch serviceaccount default -n "$NAMESPACE" \
+  -p '{"imagePullSecrets": [{"name": "ar-pull-secret"}]}' 2>/dev/null || true
+echo "  Pull secret refreshed — pods nuevos podrán hacer pull de AR."
+
+# ── Step 5: Copy models from local MinIO to K8s MinIO via port-forward ────────
 if [[ "$SKIP_MODELS" == "false" ]]; then
   echo ""
   echo "[5/7] Uploading ML models to K8s MinIO..."
 
-  # Wait for MinIO LoadBalancer IP (up to 5 minutes)
-  echo "  Waiting for MinIO LoadBalancer IP..."
-  K8S_MINIO_IP=""
-  for i in $(seq 1 30); do
-    K8S_MINIO_IP=$(kubectl get svc minio -n "$NAMESPACE" \
-      -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-    if [[ -n "$K8S_MINIO_IP" ]]; then
-      echo "  K8s MinIO IP: $K8S_MINIO_IP"
-      break
-    fi
-    echo "  (${i}/30) Waiting for MinIO external IP..."
-    sleep 10
-  done
+  # K8s MinIO is ClusterIP (no external IP). Use port-forward to reach it.
+  # Port 9002 avoids conflict with Docker Compose MinIO on 9000.
+  echo "  Starting port-forward: localhost:9002 → K8s minio:9000..."
+  kubectl port-forward -n "$NAMESPACE" svc/minio 9002:9000 &
+  PF_PID=$!
+  trap "kill $PF_PID 2>/dev/null || true" EXIT
+  sleep 4
 
-  if [[ -z "$K8S_MINIO_IP" ]]; then
-    echo "ERROR: MinIO external IP not assigned after 5 minutes."
-    echo "  Check: kubectl get svc minio -n $NAMESPACE"
-    exit 1
-  fi
+  K8S_MINIO_URL="http://localhost:9002"
 
-  K8S_MINIO_URL="http://${K8S_MINIO_IP}:9000"
-
-  # Wait for MinIO to be healthy
-  echo "  Waiting for MinIO to be ready..."
+  # Wait for MinIO to respond via port-forward
+  echo "  Waiting for K8s MinIO to be ready..."
   for i in $(seq 1 20); do
     if curl -sf "${K8S_MINIO_URL}/minio/health/live" &>/dev/null; then
       echo "  MinIO is ready."
@@ -216,57 +219,69 @@ else
 fi
 
 # ── Step 6: Restart spark-predictor job to pick up fresh models ───────────────
-echo ""
-echo "[6/7] Restarting spark-predictor job with fresh models..."
+if [[ "$SKIP_MODELS" == "true" ]]; then
+  echo ""
+  echo "[6/7] SKIPPED: Predictor restart (--skip-models — no models yet, run train.sh first)"
+else
+  echo ""
+  echo "[6/7] Restarting spark-predictor job with fresh models..."
 
-# Delete any existing job (it may have run with corrupt models)
-kubectl delete job spark-predictor -n "$NAMESPACE" --ignore-not-found=true
-sleep 3
+  # Delete any existing job (it may have run with corrupt models)
+  kubectl delete job spark-predictor -n "$NAMESPACE" --ignore-not-found=true
+  sleep 3
 
-# Wait for spark master and workers to be ready
-echo "  Waiting for Spark Master ready..."
-kubectl rollout status deployment/spark-master -n "$NAMESPACE" --timeout=120s
-echo "  Waiting for Spark Workers ready..."
-kubectl rollout status deployment/spark-worker -n "$NAMESPACE" --timeout=120s
+  # Wait for spark master and workers to be ready
+  echo "  Waiting for Spark Master ready..."
+  kubectl rollout status deployment/spark-master -n "$NAMESPACE" --timeout=120s
+  echo "  Waiting for Spark Workers ready..."
+  kubectl rollout status deployment/spark-worker -n "$NAMESPACE" --timeout=120s
 
-# Apply the predictor job
-kubectl apply -f "$SCRIPT_DIR/08-spark-predictor-job.yaml"
-echo "  spark-predictor job created."
+  # Apply the predictor job
+  kubectl apply -f "$SCRIPT_DIR/08-spark-predictor-job.yaml"
+  echo "  spark-predictor job created."
+fi
 
 # ── Step 7: Verification ──────────────────────────────────────────────────────
 echo ""
 echo "[7/7] Verifying deployment..."
 
-# Wait for predictor job to complete (it just submits spark-submit and exits)
-echo "  Waiting for spark-predictor job to complete submission..."
-kubectl wait --for=condition=complete job/spark-predictor \
-  -n "$NAMESPACE" --timeout=120s 2>/dev/null || {
-    echo "  WARNING: spark-predictor job did not complete in 120s."
-    echo "  Check: kubectl logs -n $NAMESPACE job/spark-predictor"
-}
+if [[ "$SKIP_MODELS" == "true" ]]; then
+  echo "  Predictor verification skipped (no models yet)."
+  echo "  Next steps:"
+  echo "    1. bash train.sh          — entrena el modelo en GKE (cluster mode)"
+  echo "    2. bash k8s/start_k8s.sh --skip-build --skip-deploy  — copia modelos y arranca el predictor"
+else
+  # Wait for predictor job to complete (it just submits spark-submit and exits)
+  echo "  Waiting for spark-predictor job to complete submission..."
+  kubectl wait --for=condition=complete job/spark-predictor \
+    -n "$NAMESPACE" --timeout=120s 2>/dev/null || {
+      echo "  WARNING: spark-predictor job did not complete in 120s."
+      echo "  Check: kubectl logs -n $NAMESPACE job/spark-predictor"
+  }
 
-# Check spark-predictor logs for driver submission
-echo ""
-echo "  === spark-predictor job logs ==="
-kubectl logs -n "$NAMESPACE" job/spark-predictor 2>/dev/null | grep -E "Driver successfully submitted|RUNNING|Error|ERROR" | head -5
+  # Check spark-predictor logs for driver submission
+  echo ""
+  echo "  === spark-predictor job logs ==="
+  kubectl logs -n "$NAMESPACE" job/spark-predictor 2>/dev/null | grep -E "Driver successfully submitted|RUNNING|Error|ERROR" | head -5
 
-# Wait for the Spark driver to start running on a worker (up to 3 minutes)
-echo ""
-echo "  Waiting for Spark driver to load models (may take 2-3 min)..."
-for i in $(seq 1 36); do
-  DRIVER_STDOUT=$(kubectl exec -n "$NAMESPACE" -l app=spark-worker -- \
-    sh -c 'tail -2 /var/lib/spark/work/driver-*/stdout 2>/dev/null | grep -v "==>"' 2>/dev/null | tail -3 || true)
-  if echo "$DRIVER_STDOUT" | grep -q "Polling Kafka"; then
-    echo "  Driver is RUNNING and polling Kafka!"
-    break
-  elif echo "$DRIVER_STDOUT" | grep -q "ERROR\|AssertionError\|Exception"; then
-    echo "  WARNING: Driver encountered an error:"
-    echo "  $DRIVER_STDOUT"
-    break
-  fi
-  echo "  (${i}/36) Driver starting... $DRIVER_STDOUT"
-  sleep 5
-done
+  # Wait for the Spark driver to start running on a worker (up to 3 minutes)
+  echo ""
+  echo "  Waiting for Spark driver to load models (may take 2-3 min)..."
+  for i in $(seq 1 36); do
+    DRIVER_STDOUT=$(kubectl exec -n "$NAMESPACE" -l app=spark-worker -- \
+      sh -c 'tail -2 /var/lib/spark/work/driver-*/stdout 2>/dev/null | grep -v "==>"' 2>/dev/null | tail -3 || true)
+    if echo "$DRIVER_STDOUT" | grep -q "Polling Kafka"; then
+      echo "  Driver is RUNNING and polling Kafka!"
+      break
+    elif echo "$DRIVER_STDOUT" | grep -q "ERROR\|AssertionError\|Exception"; then
+      echo "  WARNING: Driver encountered an error:"
+      echo "  $DRIVER_STDOUT"
+      break
+    fi
+    echo "  (${i}/36) Driver starting... $DRIVER_STDOUT"
+    sleep 5
+  done
+fi
 
 # Final status
 echo ""
@@ -283,7 +298,7 @@ echo "    http://${FLASK_IP}/flights/delays/predict_kafka"
 
 echo ""
 echo "  MinIO (models check):"
-if [[ -n "${K8S_MINIO_IP:-}" ]]; then
+if [[ -n "${K8S_MINIO_URL:-}" ]]; then
   RF_COUNT=$("$MC" ls "k8s-minio/lakehouse/models/spark_random_forest_classifier.flight_delays.5.0.bin/data/" 2>/dev/null | grep "\.parquet$" | wc -l || echo "?")
   echo "    RF model data files: ${RF_COUNT} (must be 1)"
 fi

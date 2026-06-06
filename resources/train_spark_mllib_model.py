@@ -35,8 +35,7 @@ def main(base_path="."):
         spark = (
             pyspark.sql.SparkSession.builder
             .appName(APP_NAME)
-            .master("spark://spark-master:7077")
-            .config("spark.submit.deployMode", "client")
+            # master y deployMode vienen de spark-submit (--master k8s://... --deploy-mode cluster)
             # --- Iceberg ---
             .config("spark.sql.extensions",
                     "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
@@ -54,9 +53,6 @@ def main(base_path="."):
                     "org.apache.hadoop.fs.s3a.S3AFileSystem")
             .config("spark.hadoop.fs.s3a.aws.credentials.provider",
                     "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
-            # --- YARN ---
-            .config("spark.hadoop.yarn.resourcemanager.address",
-                    "yarn-resourcemanager:8032")
             .getOrCreate()
         )
         sc = spark.sparkContext

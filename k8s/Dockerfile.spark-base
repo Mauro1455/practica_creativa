@@ -1,16 +1,29 @@
 FROM eclipse-temurin:17-jre-jammy
 
 RUN apt-get update && \
-    apt-get install -y curl netcat-openbsd && \
+    apt-get install -y curl netcat-openbsd python3 python3-pip tini && \
     rm -rf /var/lib/apt/lists/*
+
+# Packages needed by the training driver pod (findspark, mlflow, boto3)
+RUN pip3 install --no-cache-dir findspark mlflow boto3
 
 ENV SPARK_HOME=/opt/spark
 ENV PATH=${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
 
-# setup.sh merges extra-jars/*.jar (hadoop-aws, bundle-2.24.6 without Netty) directly
+# setup.sh merges extra-jars/*.jar (hadoop-aws, aws-java-sdk-bundle) directly
 # into spark-4.1.1/jars/ before docker build, so a single COPY puts everything in the
-# right place without creating a duplicate Docker layer for the 533 MB bundle.
+# right place without creating a duplicate Docker layer for the large bundle.
 COPY spark-4.1.1/ /opt/spark/
+
+# Training script — used by K8s Spark driver pod (local:///opt/spark/training/...)
+COPY training/ /opt/spark/training/
+
+# Spark K8s requires /opt/entrypoint.sh — without it the driver pod exits with code 127
+RUN cp /opt/spark/kubernetes/dockerfiles/spark/entrypoint.sh /opt/entrypoint.sh && \
+    chmod +x /opt/entrypoint.sh
 
 RUN mkdir -p /var/lib/spark/work
 WORKDIR /opt/spark
+ENTRYPOINT ["/opt/entrypoint.sh"]

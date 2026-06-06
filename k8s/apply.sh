@@ -12,6 +12,16 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NAMESPACE="practica"
 MANIFESTS="$SCRIPT_DIR"
 
+PROJECT_ID="${CLOUDSDK_CORE_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+REGION="${REGION:-europe-west1}"
+REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/practica"
+
+# Applies a manifest substituting the registry placeholder with the current project registry
+kube_apply() {
+  sed "s|europe-west1-docker.pkg.dev/practicacreativa-497711/practica|${REGISTRY}|g" "$1" \
+    | kubectl apply -f -
+}
+
 # ── Comprobaciones previas ────────────────────────────────────────────────────
 DATA_FILE="$PROJECT_ROOT/data/origin_dest_distances.jsonl"
 JAR_FILE="$PROJECT_ROOT/flight_prediction/target/scala-2.13/flight_prediction_2.13-0.1.jar"
@@ -33,9 +43,10 @@ echo "Tamaño de los ficheros de datos:"
 wc -c "$DATA_FILE" "$JAR_FILE"
 echo ""
 
-# ── 1. Namespace ──────────────────────────────────────────────────────────────
-echo "[1/8] Namespace..."
+# ── 1. Namespace + RBAC ───────────────────────────────────────────────────────
+echo "[1/8] Namespace y RBAC..."
 kubectl apply -f "$MANIFESTS/00-namespace.yaml"
+kubectl apply -f "$MANIFESTS/10-spark-rbac.yaml"
 
 # ── 2. ConfigMaps de datos ────────────────────────────────────────────────────
 # --server-side (SSA) guarda el estado en el servidor, NO escribe la anotación
@@ -71,9 +82,9 @@ kubectl apply -f "$MANIFESTS/05-minio.yaml"
 
 # ── 6. Spark (Master + Workers) + jar-server + Flask ─────────────────────────
 echo "[6/8] Spark, jar-server y Flask..."
-kubectl apply -f "$MANIFESTS/06-spark.yaml"
+kube_apply "$MANIFESTS/06-spark.yaml"
 kubectl apply -f "$MANIFESTS/07-jar-server.yaml"
-kubectl apply -f "$MANIFESTS/09-flask.yaml"
+kube_apply "$MANIFESTS/09-flask.yaml"
 
 # ── 7. Esperar a que los jobs de init terminen ────────────────────────────────
 echo "[7/8] Esperando a jobs de inicialización..."
@@ -101,7 +112,7 @@ kubectl rollout status deployment/spark-worker -n "$NAMESPACE" --timeout=180s
 echo "  Esperando a jar-server..."
 kubectl rollout status deployment/jar-server -n "$NAMESPACE" --timeout=60s
 
-kubectl apply -f "$MANIFESTS/08-spark-predictor-job.yaml"
+kube_apply "$MANIFESTS/08-spark-predictor-job.yaml"
 
 # ── Resumen ───────────────────────────────────────────────────────────────────
 echo ""
