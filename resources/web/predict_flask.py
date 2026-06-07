@@ -48,7 +48,7 @@ def kafka_response_consumer():
             for message in consumer:
                 prediction = message.value
                 uuid = prediction.get('UUID')
-                print(f"[kafka_consumer] Got prediction UUID={uuid} Prediction={prediction.get('Prediction')}", flush=True)
+                print(f"[kafka_consumer] Got prediction UUID={uuid} prediction={prediction.get('prediction')}", flush=True)
                 if uuid:
                     socketio.emit('prediction', prediction, room=uuid, namespace='/')
         except Exception as exc:
@@ -61,6 +61,7 @@ consumer_thread.start()
 @socketio.on('join')
 def on_join(data):
     uuid = data['uuid']
+    print(f'[socketio] JOIN room={uuid}', flush=True)
     join_room(uuid)
 
 import uuid
