@@ -174,8 +174,10 @@ Con Docker Compose en marcha, ejecutar estos tres comandos en orden:
 #      Despliega Kafka, Cassandra, MinIO, Spark, Flask en GKE.
 bash k8s/start_k8s.sh --skip-models
 
-# 6b — Entrenar el modelo RandomForest en K8s en cluster mode (~10-15 min)
-#      El driver y los executors corren como pods de GKE.
+# 6b — Entrenar el modelo RandomForest en K8s en cluster mode (~20-25 min)
+#      Primera vez: train.sh descarga el dataset de vuelos (~4.5 MB) y crea
+#      la tabla Iceberg en MinIO local (~5-10 min). Ejecuciones posteriores
+#      saltan este paso automáticamente.
 #      El modelo se guarda en el MinIO de Docker Compose (esta VM).
 #      Progreso: http://$(curl -s ifconfig.me):5000 → Experiments
 bash train.sh

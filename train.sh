@@ -50,6 +50,47 @@ echo ""
 echo "  Progreso en MLflow: http://${VM_IP}:5000 → Experiments"
 echo ""
 
+# ── Paso previo: datos + tabla Iceberg en MinIO ───────────────────────────────
+# El entrenamiento lee de lakehouse.flights.training_features (tabla Iceberg en
+# MinIO). Si no existe, la creamos aquí a partir del JSONL de entrenamiento.
+TRAINING_DATA="${SCRIPT_DIR}/data/simple_flight_delay_features.jsonl.bz2"
+MC="/tmp/mc"
+
+# Descargar dataset si no está (gitignored; ~350 MB)
+if [ ! -f "${TRAINING_DATA}" ]; then
+  echo "[setup 1/2] Descargando dataset de entrenamiento (~350 MB)..."
+  curl -fL "http://s3.amazonaws.com/agile_data_science/simple_flight_delay_features.jsonl.bz2" \
+    -o "${TRAINING_DATA}"
+  echo "  Dataset descargado."
+fi
+
+# Descargar mc si no está (cliente MinIO para comprobar si la tabla ya existe)
+if [ ! -x "$MC" ]; then
+  curl -fsSL "https://dl.min.io/client/mc/release/linux-amd64/mc" -o "$MC" && chmod +x "$MC"
+fi
+"$MC" alias set local-minio "http://localhost:9000" minio minio123 --quiet 2>/dev/null || true
+"$MC" mb --ignore-existing local-minio/lakehouse &>/dev/null || true
+
+TABLE_FILES=$("$MC" ls --recursive "local-minio/lakehouse/warehouse/flights/training_features/" 2>/dev/null | wc -l)
+if [ "${TABLE_FILES}" -lt 1 ]; then
+  echo "[setup 2/2] Creando tabla Iceberg en MinIO (primera vez, ~5-10 min)..."
+  docker run --rm \
+    --network host \
+    -v "${TRAINING_DATA}:/practica/data/simple_flight_delay_features.jsonl.bz2:ro" \
+    -v "${SCRIPT_DIR}/resources/setup_lakehouse.py:/practica/resources/setup_lakehouse.py:ro" \
+    -v "${SCRIPT_DIR}/ivy2-cache:/root/.ivy2" \
+    "${REGISTRY}/spark-base:4.1.1" \
+    /opt/spark/bin/spark-submit \
+      --master local[2] \
+      --jars "/opt/spark/extra-jars/hadoop-aws-3.4.1.jar,/opt/spark/extra-jars/bundle-2.25.16.jar" \
+      --packages "org.apache.iceberg:iceberg-spark-runtime-4.0_2.13:1.10.0" \
+      /practica/resources/setup_lakehouse.py /practica
+  echo "[setup 2/2] Tabla Iceberg creada en MinIO."
+else
+  echo "[setup] Tabla Iceberg ya presente en MinIO."
+fi
+echo ""
+
 # ── Kubeconfig sin exec-plugin ────────────────────────────────────────────────
 # El contenedor eclipse-temurin no tiene gke-gcloud-auth-plugin, así que
 # ~/.kube/config (que usa exec: ...) daría 401. Generamos un kubeconfig
