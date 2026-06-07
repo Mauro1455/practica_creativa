@@ -272,11 +272,12 @@ services:
       AWS_ACCESS_KEY_ID: minio
       AWS_SECRET_ACCESS_KEY: minio123
     command: >
+      bash -c "pip install -q boto3 &&
       mlflow server
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:///mlflow.db
-      --default-artifact-root s3://lakehouse/mlflow
+      --default-artifact-root s3://lakehouse/mlflow"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
