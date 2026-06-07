@@ -360,6 +360,7 @@ services:
       - ./spark-4.1.1:/opt/spark
       - ./ivy2-cache:/root/.ivy2
       - .:/opt/project
+      - ./airflow/k8s-spark-config.yaml:/root/.kube/config:ro
     environment:
       AIRFLOW__CORE__EXECUTOR: SequentialExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db

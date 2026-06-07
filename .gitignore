@@ -52,3 +52,4 @@ es/
 # Docs/notes not needed for deployment
 CONTEXT_CLAUDE_CODE.md
 guia_arranque*.md
+airflow/k8s-spark-config.yaml
