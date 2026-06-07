@@ -236,8 +236,9 @@ else
   echo "  Waiting for Spark Workers ready..."
   kubectl rollout status deployment/spark-worker -n "$NAMESPACE" --timeout=120s
 
-  # Apply the predictor job
-  kubectl apply -f "$SCRIPT_DIR/08-spark-predictor-job.yaml"
+  # Apply the predictor job (sustituye el registry hardcodeado por el del proyecto activo)
+  sed "s|europe-west1-docker.pkg.dev/practicacreativa-497711/practica|${REGISTRY}|g" \
+    "$SCRIPT_DIR/08-spark-predictor-job.yaml" | kubectl apply -f -
   echo "  spark-predictor job created."
 fi
 

@@ -67,6 +67,17 @@ gcloud compute firewall-rules create practica-allow-ports \
   --allow tcp:5001,tcp:8080,tcp:8090,tcp:9000,tcp:9001,tcp:5000 \
   --target-tags=practica-ports \
   --description="Puertos de practica-creativa"
+
+# Dar permiso de lectura al service account del nodo para Artifact Registry
+# (se hace aquí, desde la máquina local/Cloud Shell con cuenta Owner,
+#  porque la VM usa el SA de Compute Engine que no tiene permisos IAM)
+PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.reader"
+gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/container.admin"
 ```
 
 ### Paso 2 — Conectarse a la VM e instalar Docker y kubectl
@@ -103,13 +114,18 @@ cd practica_creativa
 bash prepare.sh
 ```
 
-El script `prepare.sh` realiza 6 pasos:
+El script `prepare.sh` realiza 11 pasos:
 1. Spark 4.1.1 binarios
 2. `extra-jars/hadoop-aws-3.4.1.jar` (acceso S3A → MinIO; en `extra-jars/` porque Spark 4.1.1 incluye `hadoop-client-runtime-3.4.2` con formato "60s" que rompe 3.3.x)
 3. `extra-jars/bundle-2.25.16.jar` (AWS SDK v2 — requerido por hadoop-aws 3.4.x; en `extra-jars/` para que el Spark Master **no** lo cargue automáticamente y evitar el conflicto Netty con `NoSuchMethodError` en `PooledByteBufAllocator`)
 4. `data/origin_dest_distances.jsonl` (distancias entre aeropuertos, necesario para Cassandra)
 5. JAR precompilado de Scala (evita instalar sbt)
-6. `jars/java-driver-core-shaded-4.18.1.jar` (DataStax OSS Driver v4 para Cassandra; marcado como `provided` en build.sbt → debe estar en el classpath del worker en runtime; shaded = sin conflictos Netty)
+6. `jars/kafka-clients-3.9.0.jar` (cliente Kafka para el predictor; la distribución estándar de Spark no lo incluye aunque `spark-sql-kafka-0-10` esté como `provided` en build.sbt)
+7. `jars/java-driver-core-shaded-4.17.0.jar` (DataStax OSS Driver v4 para Cassandra; se usa `com.datastax.oss` porque la versión `org.apache.cassandra` 4.18.x no funciona en runtime — su POM lista la Guava shadeada como dependencia compile separada)
+8. `jars/java-driver-shaded-guava-25.1-jre-graal-sub-1.jar` (Guava shadeada bajo `com.datastax.oss.driver.shaded.guava.*`; requerida por el driver en runtime — sin este JAR lanza `NoClassDefFoundError: ImmutableList` al abrir la sesión Cassandra)
+9. `jars/config-1.4.1.jar` (Typesafe Config; el driver la usa para `reference.conf` y no está shadeada dentro del JAR — sin ella lanza `NoClassDefFoundError: ConfigMergeable` al construir `CqlSession`)
+10. `jars/native-protocol-1.5.1.jar` (protocolo binario CQL de DataStax; no está shadeado en el JAR principal — sin él lanza `NoClassDefFoundError: PrimitiveCodec`)
+11. `jars/jnr-posix-3.1.18.jar` (sockets Unix del driver DataStax; sin él lanza `NoClassDefFoundError: POSIXHandler` en stderr y vuelve a TCP — no fatal, pero añade ruido en los logs)
 
 ### Paso 4 — Arrancar los servicios de soporte con Docker Compose
 
@@ -144,12 +160,6 @@ gcloud container clusters create practica-k8s \
   --scopes=cloud-platform \
   --project=$(gcloud config get-value project)
 
-# Dar permiso de lectura al service account del nodo para Artifact Registry
-# (necesario para que los pods puedan hacer pull de las imágenes)
-PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
-gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/artifactregistry.reader"
 ```
 
 El cluster tarda ~5 minutos en estar disponible.

@@ -28,8 +28,8 @@ exec /opt/spark/bin/spark-submit \
   --driver-memory 512m \
   --executor-memory 512m \
   --jars "local:///opt/spark/extra-jars/hadoop-aws-3.4.1.jar,local:///opt/spark/extra-jars/bundle-2.25.16.jar" \
-  --conf "spark.rpc.askTimeout=120s" \
-  --conf "spark.network.timeout=120s" \
+  --conf "spark.rpc.askTimeout=600s" \
+  --conf "spark.network.timeout=600s" \
   --conf "spark.driver.extraJavaOptions=-DKAFKA_HOST=${KAFKA_HOST} -DMINIO_HOST=${MINIO_HOST} -DCASSANDRA_HOST=${CASSANDRA_HOST} --add-opens=java.base/sun.util.calendar=ALL-UNNAMED" \
   --conf "spark.executor.extraJavaOptions=-DKAFKA_HOST=${KAFKA_HOST} -DMINIO_HOST=${MINIO_HOST} -DCASSANDRA_HOST=${CASSANDRA_HOST}" \
   --conf "spark.hadoop.fs.s3a.endpoint=http://${MINIO_HOST}:9000" \
