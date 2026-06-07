@@ -40,3 +40,15 @@ airflow/airflow.db
 airflow/airflow-webserver.pid
 airflow/logs/
 data_minio/
+data_mongo/
+metadata
+
+# Python virtualenv
+env/
+
+# Compiled classes (JAR is in k8s/)
+es/
+
+# Docs/notes not needed for deployment
+CONTEXT_CLAUDE_CODE.md
+guia_arranque*.md
