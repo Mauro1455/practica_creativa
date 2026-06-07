@@ -25,6 +25,9 @@ with DAG(
           --master spark://spark-master:7077 \
           --deploy-mode client \
           --conf spark.pyspark.python=python3 \
+          --driver-memory 1g \
+          --executor-memory 1g \
+          --jars /opt/spark/extra-jars/hadoop-aws-3.4.1.jar,/opt/spark/extra-jars/bundle-2.25.16.jar \
           --packages org.apache.iceberg:iceberg-spark-runtime-4.0_2.13:1.10.0 \
           --conf spark.hadoop.fs.s3a.endpoint=http://minio:9000 \
           --conf spark.hadoop.fs.s3a.access.key=minio \
