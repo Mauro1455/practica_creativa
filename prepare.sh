@@ -208,6 +208,18 @@ fi
 # ── Directorio cache de Ivy (evita re-descargas de paquetes Maven) ─────────────
 mkdir -p ivy2-cache
 
+# ── Placeholder de kubeconfig para Airflow ────────────────────────────────────
+# Docker crea un DIRECTORIO si el origen de un bind-mount no existe.
+# Con este placeholder se monta como fichero. El contenido real se copia
+# desde ~/.kube/config en el Paso 6 (start_k8s.sh).
+if [ ! -f "airflow/k8s-spark-config.yaml" ]; then
+  # Si existe como directorio (ejecuciones previas sin el placeholder), lo borramos
+  [ -d "airflow/k8s-spark-config.yaml" ] && rm -rf "airflow/k8s-spark-config.yaml"
+  echo "# Kubeconfig placeholder — rellenado automáticamente por start_k8s.sh" \
+    > "airflow/k8s-spark-config.yaml"
+  echo "[extra] Placeholder de kubeconfig de Airflow creado."
+fi
+
 echo ""
 echo "========================================================"
 echo " Preparación completada."

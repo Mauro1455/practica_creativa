@@ -17,6 +17,25 @@ with DAG(
         bash_command="""
         set -e
 
+        # Project ID desde el metadata server de GCP (no hardcodeado)
+        PROJECT_ID=$(curl -sf --max-time 3 \
+          "http://metadata.google.internal/computeMetadata/v1/project/project-id" \
+          -H "Metadata-Flavor: Google" 2>/dev/null || \
+          python3 -c "
+import yaml, re
+cfg = yaml.safe_load(open('/root/.kube/config'))
+m = re.match(r'gke_([^_]+)_', cfg['clusters'][0]['name'])
+print(m.group(1) if m else '')
+" 2>/dev/null)
+
+        if [[ -z "$PROJECT_ID" ]]; then
+          echo "ERROR: No se pudo obtener el project ID de GCP"
+          exit 1
+        fi
+
+        REGION="europe-west1"
+        REGISTRY="${REGION}-docker.pkg.dev/${PROJECT_ID}/practica"
+
         # K8s API server from mounted kubeconfig
         K8S_API=$(python3 -c "
 import yaml
@@ -40,7 +59,7 @@ print(cfg['clusters'][0]['cluster']['server'])
           --master "k8s://${K8S_API}" \
           --deploy-mode cluster \
           --name airflow-flight-delay-training \
-          --conf "spark.kubernetes.container.image=europe-west1-docker.pkg.dev/prueba2-498711/practica/spark-base:4.1.1" \
+          --conf "spark.kubernetes.container.image=${REGISTRY}/spark-base:4.1.1" \
           --conf "spark.kubernetes.container.image.pullPolicy=Always" \
           --conf "spark.kubernetes.container.image.pullSecrets=ar-pull-secret" \
           --conf "spark.kubernetes.namespace=practica" \

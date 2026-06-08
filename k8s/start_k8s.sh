@@ -127,6 +127,44 @@ if ! kubectl get ns "$NAMESPACE" &>/dev/null 2>&1; then
 fi
 echo "  kubectl connected to cluster."
 
+# Copiar kubeconfig al fichero montado en el scheduler de Airflow.
+# El bind-mount refleja cambios del host inmediatamente, sin reiniciar el contenedor.
+AIRFLOW_KUBECONFIG="$PROJECT_ROOT/airflow/k8s-spark-config.yaml"
+if [[ -f "$HOME/.kube/config" ]]; then
+  # Generar kubeconfig con token Bearer estático (sin exec-plugin) para que
+  # el Airflow container (sin gke-gcloud-auth-plugin) pueda autenticarse en GKE.
+  GKE_TOKEN=$(gcloud auth print-access-token 2>/dev/null || true)
+  K8S_CA=$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' 2>/dev/null || true)
+  K8S_SRV=$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true)
+  if [[ -n "$GKE_TOKEN" && -n "$K8S_SRV" ]]; then
+    # Eliminar directorio si fue creado por Docker antes de que existiera el placeholder
+    [[ -d "$AIRFLOW_KUBECONFIG" ]] && rm -rf "$AIRFLOW_KUBECONFIG"
+    cat > "$AIRFLOW_KUBECONFIG" <<KUBECFG
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: ${K8S_CA}
+    server: ${K8S_SRV}
+  name: gke_${PROJECT_ID}_${ZONE}_${CLUSTER_NAME}
+contexts:
+- context:
+    cluster: gke_${PROJECT_ID}_${ZONE}_${CLUSTER_NAME}
+    user: airflow-user
+  name: gke_${PROJECT_ID}_${ZONE}_${CLUSTER_NAME}
+current-context: gke_${PROJECT_ID}_${ZONE}_${CLUSTER_NAME}
+users:
+- name: airflow-user
+  user:
+    token: ${GKE_TOKEN}
+KUBECFG
+    echo "  Kubeconfig copiado a airflow/k8s-spark-config.yaml"
+    # Reiniciar el scheduler para que recoja el nuevo kubeconfig
+    docker compose -f "$PROJECT_ROOT/docker-compose.yml" restart airflow-scheduler 2>/dev/null \
+      && echo "  airflow-scheduler reiniciado." || true
+  fi
+fi
+
 # ── Step 4: Deploy K8s manifests ──────────────────────────────────────────────
 if [[ "$SKIP_DEPLOY" == "false" ]]; then
   echo ""
